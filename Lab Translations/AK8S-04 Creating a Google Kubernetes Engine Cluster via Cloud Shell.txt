@@ -1,0 +1,251 @@
+# LAB 2: AK8S-04 Creating a Google Kubernetes Engine Cluster via Cloud Shell
+
+## Steps:
+
+1. Deploy GKE clusters
+
+   - set the environment variable for the zone and cluster name.
+
+         export my_zone=us-central1-a export my_cluster=standard-cluster-1
+ 
+   - create a Kubernetes cluster.
+
+         gcloud container clusters create $my_cluster --num-nodes 3 --zone $my_zone --enable-ip-alias
+
+   - result:you will see a number of warnings highlighting changes to default GKE cluster settings that were introduced as newer version of Kubernetes have been adopted by GKE. The new cluster (standard-cluster-1) takes several minutes to deploy.
+ 
+2. Modify GKE clusters
+
+   - In Cloud Shell, execute the following command to modify standard-cluster-1 to have four nodes:
+
+         gcloud container clusters resize $my_cluster --zone $my_zone --size=4
+
+   - When prompted with Do you want to continue (Y/n), press y to confirm.
+
+   - result:the cluster now has four nodes.
+
+3. Connect to a GKE cluster
+
+   - create a kubeconfig file with the credentials of the current user (to allow authentication) and provide the endpoint details for a specific cluster (to allow communicating with that cluster through the kubectl command-line tool)
+
+         gcloud container clusters get-credentials $my_cluster --zone $my_zone
+
+   - result:This command creates a .kube directory in your home directory if it doesn't already exist. In the .kube directory, the command creates a file named config if it doesn't already exist, which is used to store the authentication and configuration information. The config file is typically called the kubeconfig file.
+
+   - open the kubeconfig file with the nano text editor:
+
+         nano ~/.kube/config
+
+   - result:Information for both clusters should appear. The information was populated during cluster creation.
+
+   - press CTRL+X to exit the nano editor.
+
+4. Use kubectl to inspect a GKE cluster
+
+   - print out the content of the kubeconfig file:
+
+         kubectl config view
+
+   - result:the sensitive certificate data is replaced with REDACTED.
+   
+   - print out the cluster information for the active context:
+
+         kubectl cluster-info
+
+   - result:the output describes the active context cluster.
+
+   - print out the active context:
+
+         kubectl config current-context
+
+   - result:a line of output indicates the active context cluster. 
+
+   - print out some details for all the cluster contexts in the kubeconfig file:
+
+         kubectl config get-contexts
+
+   - result:several lines of output indicate details about the cluster you created and an indication of which is the active context cluster. In general, this command lists some details of the clusters present in the user's kubeconfig file, including any other clusters that were created by the user as well as any manually added to the kubeconfig file.
+
+   - change the active context:
+
+         kubectl config use-context gke_${GOOGLE_CLOUD_PROJECT}_us-central1-a_standard-cluster-1
+
+   - result:in this case you have only one cluster, so this command didn't change anything.
+
+However in the future you may have more than one cluster in a project. You can use this approach to switching the active context when your kubeconfig file has the credentials and configuration for several clusters already populated. This approach requires the full name of the cluster, which includes the gke prefix, the project ID, the location, and the display name, all concatenated with underscores.
+
+   - view the resource usage across the nodes of the cluster:
+
+         kubectl top nodes
+
+   - another top command (kubectl top pods) shows similar information across all the deployed Pods in the cluster.
+
+   - enable bash autocompletion for kubectl:
+
+         source <(kubectl completion bash)
+
+   - result:this command produces no output.
+  
+   - type kubectl and press the Tab key twice.
+
+   - result:the shell outputs all the possible commands:
+
+   - type kubectl co and press the Tab key twice.
+
+   - result:The shell outputs all commands starting with "co" (or any other text you type).
+
+5. Deploy Pods to GKE clusters
+
+   1. use kubectl to deploy Pods to GKE
+
+      - deploy the latest version of nginx as a Pod named nginx-1:
+
+            kubectl create deployment nginx-1 --image nginx:latest
+
+      - result:this command creates a Pod named nginx with a container running the nginx image. In this case, the image is pulled from the Docker public registry.
+
+      - view all the deployed Pods in the active context cluster:
+
+            kubectl get pods
+
+      - enter your Pod name into a variable that we will use throughout this lab. You must type your Pod's unique name in place of [your_pod_name].
+
+           export my_nginx_pod=[your_pod_name]
+  
+      - Confirm that you have set the environment variable successfully by having the shell echo the value back to you:
+
+            echo $my_nginx_pod
+
+      - view the complete details of the Pod you just created.
+
+            kubectl describe pod $my_nginx_pod
+
+      - result: Details of the Pod, as well as its status and conditions and the events in its lifecycle, are displayed.
+
+   2. push a file into a container
+
+      - open a file named test.html in the nano text editor:
+
+            nano ~/test.html
+
+      - add the following text (shell script) to the empty test.html file:
+
+            <html> <header><title>This is title</title></header><body> Hello world </body></html>
+     
+      - press CTRL+X, then press Y and enter to save the file and exit the nano editor.
+
+      - in Cloud Shell, place the file into the appropriate location within the nginx container in the nginx Pod to be served statically:
+
+            kubectl cp ~/test.html $my_nginx_pod:/usr/share/nginx/html/test.html
+
+      - result:this command copies the test.html file from the local home directory to the /usr/share/nginx/html directory of the first container in the nginx Pod. You could specify other containers in a multi-container Pod by using the -c option, followed by the name of the container.
+
+   3. Expose the Pod for testing
+
+      - create a service to expose our nginx Pod externally:
+
+            kubectl expose pod $my_nginx_pod --port 80 --type LoadBalancer
+
+      - result:this command creates a LoadBalancer service, which allows the nginx Pod to accessed from internet addresses outside of the cluster.
+
+      - view details about services in the cluster:
+
+            kubectl get services
+
+      - result:the kubernetes service is one of the default services created or used by the cluster. The nginx service that you created is also displayed.
+
+You may need to re-run this command several times before the External IP address is displayed.
+
+      - verify that the nginx container is serving the static HTML file that you copied. You replace [EXTERNAL_IP] with the external IP address of your service that you obtained from the output of the previous step:
+      
+            curl http://[EXTERNAL_IP]/test.html
+
+      - result:the file contents appear in the output. You can go to the same address in your browser to see the file rendered as HTML.
+
+      - view the resources being used by the nginx Pod:
+
+            kubectl top pods
+
+6. Introspect GKE Pods
+
+   1. Prepare the environment
+
+      - clone the source repository to the lab Cloud Shell:
+
+            git clone https://github.com/GoogleCloudPlatformTraining/training-data-analyst
+
+      - Change to the directory that contains the sample files for this lab:
+
+            cd ~/training-data-analyst/courses/ak8s/04_GKE_Shell/
+
+      - result:a sample manifest YAML file for a Pod called new-nginx-pod.yaml has been provided for you
+
+      - deploy your manifest, execute the following command:
+
+            kubectl apply -f ./new-nginx-pod.yaml
+
+      - see a list of Pods:
+
+            kubectl get pods
+
+      - result:you can see your new nginx Pod as well as the one we created earlier in the lab.
+
+   2. Use shell redirection to connect to a Pod
+
+      - start an interactive bash shell in the nginx container:
+
+            kubectl exec -it new-nginx /bin/bash
+
+      - result:a new shell prompt appears.
+
+      - In Cloud Shell, in the nginx bash shell, execute the following commands to install the nano text editor:
+
+            apt-get update apt-get install nano
+
+      - In Cloud Shell, in the nginx bash shell, execute the following commands to switch to the static files directory and create a test.html file:
+
+            cd /usr/share/nginx/html nano test.html
+
+      - In Cloud Shell, in the nginx bash shell nano session, type the following text:
+
+            <html> <header><title>This is title</title></header><body> Hello world </body></html>
+
+      - Press CTRL+X, then press Y and enter to save the file and exit the nano editor.
+
+      - In Cloud Shell, in the nginx bash shell, execute the following command to exit the nginx bash shell:
+
+            exit
+
+      - set up port forwarding from Cloud Shell to the nginx Pod (from port 10081 of the Cloud Shell VM to port 80 of the nginx container):
+
+            kubectl port-forward new-nginx 10081:80
+
+      - In the Cloud Shell menu bar, click the plus sign (+) icon to start a new Cloud Shell session:
+
+      - result:a second Cloud Shell session appears in your Cloud Shell window. You can switch between sessions by clicking the titles in the menu bar.
+
+      - In the second Cloud Shell session, execute the following command to test the modified nginx container through the port forwarding:
+
+            curl http://127.0.0.1:10081/test.html
+
+      - result:the HTML text you placed in the test.html file is displayed.
+
+   3. View the logs of a Pod
+
+      - in the Cloud Shell menu bar, click the plus sign (+) icon to start another new Cloud Shell session.
+
+      - result:a third Cloud Shell session appears in your Cloud Shell window. As before, you can switch sessions by clicking them in the menu bar.
+
+      - in third Cloud Shell window, execute the following command to display the logs and to stream new logs as they arrive (and also include timestamps) for the new-nginx Pod:
+
+            kubectl logs new-nginx -f --timestamps
+
+      - result:you will see the logs display in this new window
+
+      - return to the second Cloud Shell window and re-run the curl command to generate some traffic on the Pod.
+
+      - review the additional log messages as they appear in the third Cloud Shell window.
+
+      - close the third Cloud Shell window to stop displaying the log messages.
+
+      - Close the original Cloud Shell window to stop the port forwarding process.
